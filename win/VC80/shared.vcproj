@@ -656,6 +656,10 @@
 				RelativePath="..\..\src\shared\Util.h"
 				>
 			</File>
+			<File
+				RelativePath="..\..\src\shared\WorldPacket.h"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="Config"
@@ -668,30 +672,6 @@
 				RelativePath="..\..\src\shared\Config\Config.h"
 				>
 			</File>
-			<File
-				RelativePath="..\..\src\shared\Config\ConfigEnv.h"
-				>
-			</File>
-			<Filter
-				Name="dotconfpp"
-				>
-				<File
-					RelativePath="..\..\src\shared\Config\dotconfpp\dotconfpp.cpp"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\shared\Config\dotconfpp\dotconfpp.h"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\shared\Config\dotconfpp\mempool.cpp"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\shared\Config\dotconfpp\mempool.h"
-					>
-				</File>
-			</Filter>
 		</Filter>
 		<Filter
 			Name="Auth"
@@ -713,11 +693,11 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\src\shared\Auth\Hmac.cpp"
+				RelativePath="..\..\src\shared\Auth\HMACSHA1.cpp"
 				>
 			</File>
 			<File
-				RelativePath="..\..\src\shared\Auth\Hmac.h"
+				RelativePath="..\..\src\shared\Auth\HMACSHA1.h"
 				>
 			</File>
 			<File

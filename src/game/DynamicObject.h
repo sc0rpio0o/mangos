@@ -47,6 +47,10 @@ class DynamicObject : public WorldObject
         void AddAffected(Unit *unit) { m_affected.insert(unit); }
         void RemoveAffected(Unit *unit) { m_affected.erase(unit); }
         void Delay(int32 delaytime);
+
+        bool IsHostileTo(Unit const* unit) const;
+        bool IsFriendlyTo(Unit const* unit) const;
+
         bool isVisibleForInState(Player const* u, WorldObject const* viewPoint, bool inVisibleList) const;
 
         void Say(int32 textId, uint32 language, uint64 TargetGuid) { MonsterSay(textId,language,TargetGuid); }
@@ -57,7 +61,6 @@ class DynamicObject : public WorldObject
 
         GridReference<DynamicObject> &GetGridRef() { return m_gridRef; }
 
-        bool isActiveObject() const { return m_isActiveObject; }
     protected:
         uint32 m_spellId;
         SpellEffectIndex m_effIndex;
@@ -66,6 +69,5 @@ class DynamicObject : public WorldObject
         AffectedSet m_affected;
     private:
         GridReference<DynamicObject> m_gridRef;
-        bool m_isActiveObject;
 };
 #endif

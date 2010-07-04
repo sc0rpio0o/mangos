@@ -33,6 +33,7 @@
 struct SpellEntry;
 
 class CreatureAI;
+class Group;
 class Quest;
 class Player;
 class WorldSession;
@@ -81,7 +82,8 @@ struct CreatureInfo
     uint32  faction_A;
     uint32  faction_H;
     uint32  npcflag;
-    float   speed;
+    float   speed_walk;
+    float   speed_run;
     float   scale;
     uint32  rank;
     float   mindmg;
@@ -251,7 +253,7 @@ enum ChatType
     CHAT_TYPE_ZONE_YELL         = 6
 };
 
-//Selection method used by SelectTarget (CreatureEventAI)
+// Selection method used by SelectAttackingTarget
 enum AttackingTarget
 {
     ATTACKING_TARGET_RANDOM = 0,                            //Just selects a random target
@@ -274,13 +276,17 @@ enum AttackingTarget
 // Vendors
 struct VendorItem
 {
-    VendorItem(uint32 _item, uint32 _maxcount, uint32 _incrtime, uint32 _ExtendedCost)
+    VendorItem(uint32 _item, uint32 _maxcount, uint32 _incrtime, int32 _ExtendedCost)
         : item(_item), maxcount(_maxcount), incrtime(_incrtime), ExtendedCost(_ExtendedCost) {}
 
     uint32 item;
     uint32 maxcount;                                        // 0 for infinity item amount
     uint32 incrtime;                                        // time for restore items amount if maxcount != 0
-    uint32 ExtendedCost;
+    int32  ExtendedCost;                                    // negative if need exclude normal item money cost
+
+    // helpers
+    uint32 IsExcludeMoneyPrice() const { return ExtendedCost < 0; }
+    uint32 GetExtendedCostId() const { return std::abs(ExtendedCost); }
 };
 typedef std::vector<VendorItem*> VendorItemList;
 
@@ -295,13 +301,12 @@ struct VendorItemData
     }
     bool Empty() const { return m_items.empty(); }
     uint8 GetItemCount() const { return m_items.size(); }
-    void AddItem( uint32 item, uint32 maxcount, uint32 ptime, uint32 ExtendedCost)
+    void AddItem( uint32 item, uint32 maxcount, uint32 ptime, int32 ExtendedCost)
     {
         m_items.push_back(new VendorItem(item, maxcount, ptime, ExtendedCost));
     }
     bool RemoveItem( uint32 item_id );
-    VendorItem const* FindItem(uint32 item_id) const;
-    size_t FindItemSlot(uint32 item_id) const;
+    VendorItem const* FindItemCostPair(uint32 item_id, int32 extendedCost) const;
 
     void Clear()
     {
@@ -439,7 +444,6 @@ class MANGOS_DLL_SPEC Creature : public Unit
 
         bool AIM_Initialize();
 
-        void AI_SendMoveToPacket(float x, float y, float z, uint32 time, SplineFlags MovementFlags, SplineType type);
         CreatureAI* AI() { return i_AI; }
 
         void AddSplineFlag(SplineFlags f)
@@ -530,11 +534,18 @@ class MANGOS_DLL_SPEC Creature : public Unit
         Loot loot;
         bool lootForPickPocketed;
         bool lootForBody;
-        Player *GetLootRecipient() const;
-        bool hasLootRecipient() const { return m_lootRecipient!=0; }
+        bool lootForSkin;
 
-        void SetLootRecipient (Unit* unit);
+        void PrepareBodyLootState();
+        ObjectGuid GetLootRecipientGuid() const { return m_lootRecipientGuid; }
+        uint32 GetLootGroupRecipientId() const { return m_lootGroupRecipientId; }
+        Player* GetLootRecipient() const;                   // use group cases as prefered
+        Group* GetGroupLootRecipient() const;
+        bool HasLootRecipient() const { return m_lootGroupRecipientId || !m_lootRecipientGuid.IsEmpty(); }
+        bool IsGroupLootRecipient() const { return m_lootGroupRecipientId; }
+        void SetLootRecipient(Unit* unit);
         void AllLootRemovedFromCorpse();
+        Player* GetOriginalLootRecipient() const;           // ignore group changes/etc, not for looting
 
         SpellEntry const *reachWithSpellAttack(Unit *pVictim);
         SpellEntry const *reachWithSpellCure(Unit *pVictim);
@@ -555,6 +566,7 @@ class MANGOS_DLL_SPEC Creature : public Unit
         void SetNoSearchAssistance(bool val) { m_AlreadySearchedAssistance = val; }
         bool HasSearchedAssistance() { return m_AlreadySearchedAssistance; }
         bool CanAssistTo(const Unit* u, const Unit* enemy, bool checkfaction = true) const;
+        bool CanInitiateAttack();
 
         MovementGeneratorType GetDefaultMovementType() const { return m_defaultMovementType; }
         void SetDefaultMovementType(MovementGeneratorType mgt) { m_defaultMovementType = mgt; }
@@ -582,12 +594,13 @@ class MANGOS_DLL_SPEC Creature : public Unit
         float GetRespawnRadius() const { return m_respawnradius; }
         void SetRespawnRadius(float dist) { m_respawnradius = dist; }
 
-        uint32 m_groupLootTimer;                            // (msecs)timer used for group loot
-        uint32 m_groupLootId;                               // used to find group which is looting corpse
+        void StartGroupLoot(Group* group, uint32 timer);
 
         void SendZoneUnderAttackMessage(Player* attacker);
 
         void SetInCombatWithZone();
+
+        Unit* SelectAttackingTarget(AttackingTarget target, uint32 position) const;
 
         bool hasQuest(uint32 quest_id) const;
         bool hasInvolvedQuest(uint32 quest_id)  const;
@@ -613,7 +626,6 @@ class MANGOS_DLL_SPEC Creature : public Unit
 
         void SetDeadByDefault (bool death_state) { m_isDeadByDefault = death_state; }
 
-        bool isActiveObject() const { return m_isActiveObject || HasAuraType(SPELL_AURA_BIND_SIGHT) || HasAuraType(SPELL_AURA_FAR_SIGHT); }
         void SetActiveObjectState(bool on);
 
         void SetNeedNotify() { m_needNotify = true; }
@@ -649,8 +661,12 @@ class MANGOS_DLL_SPEC Creature : public Unit
         bool InitEntry(uint32 entry, uint32 team=ALLIANCE, const CreatureData* data=NULL);
         void RelocationNotify();
 
-        uint32 m_unPlayerDamageDone;
-        uint32 m_unUnitDamageDone;
+		uint32 m_unUnitDamageDone;
+		uint32 m_unPlayerDamageDone;
+
+        uint32 m_groupLootTimer;                            // (msecs)timer used for group loot
+        uint32 m_groupLootId;                               // used to find group which is looting corpse
+        void StopGroupLoot();
 
         // vendor items
         VendorItemCounts m_vendorItemCounts;
@@ -661,7 +677,8 @@ class MANGOS_DLL_SPEC Creature : public Unit
         static float _GetDamageMod(int32 Rank);
 
         uint32 m_lootMoney;
-        uint64 m_lootRecipient;
+        ObjectGuid m_lootRecipientGuid;                     // player who will have rights for looting if m_lootGroupRecipient==0 or group disbanded
+        uint32 m_lootGroupRecipientId;                      // group who will have rights for looting if set and exist
 
         /// Timers
         uint32 m_deathTimer;                                // (msecs)timer for death or corpse disappearance
@@ -700,7 +717,6 @@ class MANGOS_DLL_SPEC Creature : public Unit
     private:
         GridReference<Creature> m_gridRef;
         CreatureInfo const* m_creatureInfo;                 // in difficulty mode > 0 can different from ObjMgr::GetCreatureTemplate(GetEntry())
-        bool m_isActiveObject;
         SplineFlags m_splineFlags;
 };
 

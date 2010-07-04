@@ -135,7 +135,7 @@ uint32 DBCFileLoader::GetFormatRecordSize(const char * format,int32* index_pos)
     return recordsize;
 }
 
-char* DBCFileLoader::AutoProduceData(const char* format, uint32& records, char**& indexTable)
+char* DBCFileLoader::AutoProduceData(const char* format, uint32& records, char**& indexTable, uint32 sqlRecordCount, uint32 sqlHighestIndex, char *& sqlDataTable)
 {
     /*
     format STRING, NA, FLOAT,NA,INT <=>
@@ -166,6 +166,10 @@ char* DBCFileLoader::AutoProduceData(const char* format, uint32& records, char**
             if(ind>maxi)maxi=ind;
         }
 
+        // If higher index avalible from sql - use it instead of dbcs
+        if (sqlHighestIndex > maxi)
+            maxi = sqlHighestIndex;
+
         ++maxi;
         records=maxi;
         indexTable=new ptr[maxi];
@@ -173,11 +177,11 @@ char* DBCFileLoader::AutoProduceData(const char* format, uint32& records, char**
     }
     else
     {
-        records = recordCount;
-        indexTable = new ptr[recordCount];
+        records = recordCount + sqlRecordCount;
+        indexTable = new ptr[recordCount + sqlRecordCount];
     }
 
-    char* dataTable= new char[recordCount*recordsize];
+    char* dataTable= new char[(recordCount + sqlRecordCount)*recordsize];
 
     uint32 offset=0;
 
@@ -215,6 +219,8 @@ char* DBCFileLoader::AutoProduceData(const char* format, uint32& records, char**
         }
     }
 
+    sqlDataTable = dataTable + offset;
+
     return dataTable;
 }
 
@@ -242,6 +248,7 @@ char* DBCFileLoader::AutoProduceStrings(const char* format, char* dataTable)
                 offset+=1;
                 break;
             case FT_STRING:
+            {
                 // fill only not filled entries
                 char** slot = (char**)(&dataTable[offset]);
                 if(!*slot || !**slot)
@@ -251,6 +258,13 @@ char* DBCFileLoader::AutoProduceStrings(const char* format, char* dataTable)
                 }
                 offset+=sizeof(char*);
                 break;
+            }
+            case FT_NA:
+            case FT_NA_BYTE:
+            case FT_SORT:
+                break;
+            default:
+                assert(false && "unknown format character");
         }
     }
 
